@@ -217,6 +217,7 @@ sub guess_syntax {
   # syntax
   verbose("Trying to guess the file syntax...");
   my ($syntax, $sub_syntax);
+  local $_;         # avoid overwriting outside world's $_ [rt# 40489]
   while ( <$fh> ) {
     # skipping empty lines and comments. They don't tell much anyway
     /^(\n|\#|;)/ and next;
