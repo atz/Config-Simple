@@ -165,7 +165,7 @@ sub read {
   $self->{_FILE_NAME}   = $file;
   $self->{_FILE_HANDLE} = $self->_get_fh($file, O_RDONLY) or return undef;
     
-  $self->{_SYNTAX} = $self->guess_syntax(\*FH) or return undef;
+  $self->{_SYNTAX} ||= $self->guess_syntax(\*FH) or return undef;       # Don't guess if we already know [rt# 76952]
 
   # call respective parsers
 
