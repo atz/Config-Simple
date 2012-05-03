@@ -1,5 +1,14 @@
  Change log for Config::Simple
-  $Date: 2006/09/12 19:15:04 $
+
+4.60    - Wednesday, May 2, 2012
+
+    * FIXED [BUG 76952] - https://rt.cpan.org/Ticket/Display.html?id=76952
+      Don't guess_syntax if already specified
+    * FIXED [BUG 40489] - https://rt.cpan.org/Ticket/Display.html?id=40489
+      Avoid overwriting $_
+
+    Repo posted to github at:
+        https://github.com/atz/Config-Simple
 
 4.59    - Tuesday, September 12, 2006
 
@@ -13,7 +22,6 @@
     * FIXED: if commented lines had leading spaces tests Config::Simple failed
       to parse them properly. Thanks to Ricky Nance for pointing this out.
 
-
 4.57 
 	* FIXED [BUG 7793] - http://rt.cpan.org/NoAuth/Bug.html?id=7793
 	* FIXED [BUG 6252] - http://rt.cpan.org/NoAuth/Bug.html?id=6252
@@ -23,7 +31,6 @@
       on Win32 systems.
 	* FIXED: if value of a key evaluated to false the whole key wasn't being stored
 	  in the config file.
-
 
 4.55
     * vars() was buggy if a key in the configuration file was a list and the second
@@ -56,7 +63,6 @@
     * block() method was missing in previous releases. Added as
       an alias to get_block()
     
-
 4.48
     * 'autosave' mode used to save into the file even if nothing had been
       modified. Fixed in this release
@@ -116,5 +122,3 @@
     * -lc switch to disable case sensitive parsing of block names and keys
     * much improved write()
 
-
-$Revision: 3.33 $

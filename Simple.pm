@@ -13,7 +13,7 @@ use vars qw($VERSION $DEFAULTNS $LC $USEQQ $errstr);
 use AutoLoader 'AUTOLOAD';
 
 
-$VERSION   = '4.59';
+$VERSION   = '4.60';
 $DEFAULTNS = 'default';
 
 sub import {
