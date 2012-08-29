@@ -12,7 +12,6 @@ use Text::ParseWords 'parse_line';
 use vars qw($VERSION $DEFAULTNS $LC $USEQQ $errstr);
 use AutoLoader 'AUTOLOAD';
 
-
 $VERSION   = '4.60';
 $DEFAULTNS = 'default';
 
@@ -24,14 +23,11 @@ sub import {
     }
 }
 
-
-
 # delimiter used by Text::ParseWords::parse_line()
 sub READ_DELIM () { return '\s*,\s*' }
 # delimiter used by as_string()
 sub WRITE_DELIM() { return ', '      }
 sub DEBUG      () { 0 }
-
 
 sub new {
   my $class = shift;
@@ -53,20 +49,14 @@ sub new {
   return $self;
 }
 
-
-
-
 sub DESTROY {
   my $self = shift;
-  
   # if it was an auto save mode, write the changes
   # back only if the values have been modified.
   if ( $self->autosave() && $self->_is_modified() ) {
     $self->write();
   }
 }
-
-
 
 
 # initialize the object
@@ -95,32 +85,22 @@ sub _init {
   return 1;
 }
 
-
-
 sub _is_modified {
   my ($self, $bool) = @_;
-
   if ( defined $bool ) {
     $self->{_IS_MODIFIED} = $bool;
   }
   return $self->{_IS_MODIFIED};
 }
-
-
-
 sub autosave {
   my ($self, $bool) = @_;
-
   if ( defined $bool ) {
     $self->{_ARGS}->{autosave} = $bool;
   }
   return $self->{_ARGS}->{autosave};
 }
-
-
 sub syntax {
   my ($self, $syntax) = @_;  
-
   if ( defined $syntax ) {
     $self->{_SYNTAX} = $syntax;
   }  
@@ -147,8 +127,6 @@ sub _get_fh {
   }
   return (\*FH, 1);
 }
-
-
 
 sub read {
   my ($self, $file) = @_;
@@ -195,9 +173,6 @@ sub close {
   }
   return 1;
 }
-
-
-
 
 
 # tries to guess the syntax of the configuration file.
@@ -254,9 +229,6 @@ sub guess_syntax {
 }
 
 
-
-
-
 sub parse_ini_file {
   my ($class, $file) = @_;
 
@@ -310,9 +282,6 @@ sub lcase {
   return lc($str);
 }
 
-
-
-
 sub parse_cfg_file {
   my ($class, $file) = @_;
 
@@ -352,8 +321,6 @@ sub parse_cfg_file {
   }
   return \%data;
 }
-
-
 
 sub parse_http_file {
   my ($class, $file) = @_;
@@ -445,9 +412,6 @@ sub param {
   return $nset;
 }
 
-
-
-
 sub get_param {
   my ($self, $arg) = @_;
 
@@ -479,9 +443,6 @@ sub get_param {
   return @$rv==1 ? $rv->[0] : (wantarray ? @$rv : $rv);
 }
 
-
-
-
 sub get_block {
   my ($self, $block_name)  = @_;
 
@@ -499,10 +460,6 @@ sub get_block {
   return $rv;
 }
 
-
-
-
-
 sub set_block {
   my ($self, $block_name, $values) = @_;
 
@@ -519,9 +476,6 @@ sub set_block {
   $self->{_DATA}->{$block_name} = $processed_values;
   $self->_is_modified(1);
 }
-
-
-
 
 
 sub set_param {
@@ -557,12 +511,6 @@ sub set_param {
 }
 
 
-
-
-
-
-
-
 sub write {
   my ($self, $file) = @_;
 
@@ -588,13 +536,10 @@ sub write {
   return 1;
 }
 
-
-
 sub save {
   my $self = shift;
   return $self->write(@_);
 }
-
 
 # generates a writable string
 sub as_string {
@@ -636,10 +581,6 @@ sub as_string {
     return $STRING;
 }
 
-
-
-
-
 # quotes each value before saving into file
 sub quote_values {
     my $string = shift;
@@ -654,8 +595,6 @@ sub quote_values {
     }
     return $string;
 }
-
-
 
 # deletes a variable
 sub delete {
@@ -674,19 +613,14 @@ sub delete {
   delete $self->{_DATA}->{$key};
 }
 
-
-
 # clears the '_DATA' entirely.
 sub clear {
   my $self = shift;
   map { $self->delete($_) } $self->param;
 }
 
-
-
-
 1;
-__END__;
+__END__
 
 =pod
 
