@@ -1,33 +1,16 @@
-#!/usr/bin/perl -w
-# Before `make install' is performed this script should be runnable with
-# `make test'. After `make install' it should work as `perl 1.t'
-
-#########################
-
-# change 'tests => 1' to 'tests => last_test_to_print';
-
 use strict;
-use Test;
+use warnings;
+use Test::More tests => 6;
 use FindBin '$RealBin';
 use File::Spec;
-BEGIN {
-  plan tests => 6;
-}
 
-require Config::Simple;
-ok(1);
-
-#########################
-
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+require_ok("Config::Simple");
 
 my $ini_file = File::Spec->catfile($RealBin, 'simplified.ini');
-
-my $cfg = new Config::Simple();
-ok($cfg);
+my $cfg;
+ok($cfg = Config::Simple->new, 'Config::Simple->new');
 ok($cfg->read($ini_file));
-ok($cfg->param("Name") eq "MPFCU");
+is($cfg->param("Name"), "MPFCU", "config: Name");
 ok($cfg->param('Library', 'Config::Simple'));
 ok($cfg->write);
 

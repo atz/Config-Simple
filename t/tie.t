@@ -1,38 +1,21 @@
-#!/usr/bin/perl -w
-# Before `make install' is performed this script should be runnable with
-# `make test'. After `make install' it should work as `perl 1.t'
-
-#########################
-
-# change 'tests => 1' to 'tests => last_test_to_print';
-
 use strict;
-use Test;
+use warnings;
+use Test::More tests => 7;
 use FindBin '$RealBin';
 use File::Spec;
-BEGIN {
-  plan tests => 6;
-}
 
-require Config::Simple;
-Config::Simple->import('-strict');
-ok(1);
+use_ok("Config::Simple", '-strict');
 
-#########################
+my ($obj, $file, %Config);
+ok($file = File::Spec->catfile($RealBin, 'project.ini'), "finding project.ini");
+ok($obj = tie(%Config, 'Config::Simple', $file), "tie hash for $file");
+ok( exists $Config{'Project\1.Count'}, 'exists $Config{"Project\1.Count"}' );    # wtf: this FAILS under make test and succeeds on perl t/tie.t
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# open(FOO, ">err.dump"); print FOO tied(%Config)->dump; close FOO;
 
-my $file = File::Spec->catfile($RealBin, 'project.ini');
-
-my $obj = undef;
-
-ok($obj = tie my %Config, 'Config::Simple', $file);
-ok( exists $Config{'Project\1.Count'} );
-ok( $Config{'Project\0.Name'} eq 'Default' );
-ok( scalar( keys %Config ) == 24 );
+is($Config{'Project\0.Name'}, 'Default', 'config: Project\0.Name');
+is(scalar(keys %Config), 24, "Right number of keys in \%Config");
 delete $Config{'Project\1.Count'};
-ok ( exists($Config{'Project\1.Count'}) ? 0 : 1);
+ok(!exists($Config{'Project\1.Count'}), 'config: Project\1.Name');
 
-#print tied(%Config)->dump;
 

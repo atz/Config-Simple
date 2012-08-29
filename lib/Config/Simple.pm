@@ -3,6 +3,7 @@ package Config::Simple;
 # $Id: Simple.pm,v 3.57 2006/09/12 19:15:04 sherzodr Exp $
 
 use strict;
+use warnings;
 # uncomment the following line while debugging. Otherwise,
 # it's too slow for production environment
 #use diagnostics;
@@ -10,7 +11,7 @@ use Carp;
 use Fcntl qw(:DEFAULT :flock);
 use Text::ParseWords 'parse_line';
 use vars qw($VERSION $DEFAULTNS $LC $USEQQ $errstr);
-use AutoLoader 'AUTOLOAD';
+# use AutoLoader 'AUTOLOAD';
 
 $VERSION   = '4.60';
 $DEFAULTNS = 'default';
@@ -23,11 +24,13 @@ sub import {
     }
 }
 
+our $default_debug = 0;
+
 # delimiter used by Text::ParseWords::parse_line()
 sub READ_DELIM () { return '\s*,\s*' }
 # delimiter used by as_string()
 sub WRITE_DELIM() { return ', '      }
-sub DEBUG      () { 0 }
+sub DEBUG      () { $default_debug   }
 
 sub new {
   my $class = shift;
@@ -70,60 +73,41 @@ sub _init {
   } else {
     $self->{_ARGS} = { @_ };
   }
-  # if syntax was given, call syntax()
-  if ( exists $self->{_ARGS}->{syntax} ) {
-    $self->syntax($self->{_ARGS}->{syntax});
+  foreach (qw/syntax autosave/) {
+    $self->$_($self->{_ARGS}->{$_}) if exists $self->{_ARGS}->{$_};
   }
-  # if autosave was set, call autosave
-  if ( exists $self->{_ARGS}->{autosave} ) {
-    $self->autosave($self->{_ARGS}->{autosave});
-  }
-  # If filename was passed, call read()
-  if ( exists ($self->{_ARGS}->{filename}) ) {
-    return $self->read( $self->{_ARGS}->{filename} );
-  }  
+  return $self->read($self->{_ARGS}->{filename}) if exists $self->{_ARGS}->{filename};
   return 1;
 }
 
 sub _is_modified {
   my ($self, $bool) = @_;
-  if ( defined $bool ) {
-    $self->{_IS_MODIFIED} = $bool;
-  }
+  $self->{_IS_MODIFIED} = $bool if defined $bool;
   return $self->{_IS_MODIFIED};
 }
 sub autosave {
   my ($self, $bool) = @_;
-  if ( defined $bool ) {
-    $self->{_ARGS}->{autosave} = $bool;
-  }
+  $self->{_ARGS}->{autosave} = $bool if defined $bool;
   return $self->{_ARGS}->{autosave};
 }
 sub syntax {
   my ($self, $syntax) = @_;  
-  if ( defined $syntax ) {
-    $self->{_SYNTAX} = $syntax;
-  }  
+  $self->{_SYNTAX} = $syntax if defined $syntax;
   return $self->{_SYNTAX};
 }
-
 
 # takes a filename or a file handle and returns a filehandle
 sub _get_fh {
   my ($self, $arg, $mode) = @_;  
-  
-  unless ( defined $arg ) {
-    croak "_get_fh(): filename is missing";
-  }
+  croak "_get_fh(): filename is missing" unless defined $arg;
   if ( ref($arg) && (ref($arg) eq 'GLOB') ) {
     return ($arg, 0);
   }
-  unless ( defined $mode ) {
-      $mode = O_RDONLY;
-  }
+  
+  $mode = O_RDONLY unless defined $mode;
   unless ( sysopen(FH, $arg, $mode) ) {
     $self->error("couldn't open $arg: $!");
-    return undef;
+    return;
   }
   return (\*FH, 1);
 }
@@ -137,13 +121,13 @@ sub read {
     croak "Open file handle detected. If you're trying to parse another file, close() it first.";
   }
   unless ( defined $file ) {
-    croak "Usage: OBJ->read(\$file_name)";
+    croak "Missing argument to read().  Usage: OBJ->read(\$file_name)";
   }  
   
   $self->{_FILE_NAME}   = $file;
-  $self->{_FILE_HANDLE} = $self->_get_fh($file, O_RDONLY) or return undef;
+  $self->{_FILE_HANDLE} = $self->_get_fh($file, O_RDONLY) or return;
     
-  $self->{_SYNTAX} ||= $self->guess_syntax(\*FH) or return undef;       # Don't guess if we already know [rt# 76952]
+  $self->{_SYNTAX} ||= $self->guess_syntax(\*FH) or return;       # Don't guess if we already know [rt# 76952]
 
   # call respective parsers
 
@@ -155,9 +139,7 @@ sub read {
         $self->{_DATA} = $self->parse_http_file(\*FH);
   }
 
-    if ( $self->{_DATA} ) {
-        return $self->{_DATA};
-    }
+  return $self->{_DATA} if $self->{_DATA};
 
   die "Something went wrong. No supported configuration file syntax found. Either the file is of wrong syntax, or there is a bug in guess_syntax() method.";
 }
@@ -169,7 +151,7 @@ sub close {
   my $fh = $self->{_FILE_HANDLE} or return;
   unless ( close($fh) ) {
     $self->error("couldn't close the file: $!");
-    return undef;
+    return;
   }
   return 1;
 }
@@ -185,11 +167,10 @@ sub guess_syntax {
   }
   unless ( seek($fh, 0, 0) ) {
     $self->error("Couldn't seek($fh, 0, 0): $!");
-    return undef;
+    return;
   }
 
-  # now we keep reading the file line by line until we can identify the
-  # syntax
+  # now we keep reading the file line by line until we can identify the syntax
   verbose("Trying to guess the file syntax...");
   my ($syntax, $sub_syntax);
   local $_;         # avoid overwriting outside world's $_ [rt# 40489]
@@ -200,31 +181,24 @@ sub guess_syntax {
     # If there's no alpha-numeric value in this line, ignore it
     /\w/ or next;
 
-    # trim $/
-    chomp();
+    chomp();  # trim $/
 
     # If there's a block, it is an ini syntax
-    /^\s*\[\s*[^\]]+\s*\]\s*$/  and $syntax = 'ini', last;
+    /^\s*\[\s*[^\]]+\s*\]\s*$/  and return 'ini';
 
     # If we can read key/value pairs separated by '=', it still
     # is an ini syntax with a default block assumed
-    /^\s*[\w-]+\s*=\s*.*\s*$/    and $syntax = 'ini', $self->{_SUB_SYNTAX} = 'simple-ini', last;
+    /^\s*[\w-]+\s*=\s*.*\s*$/   and $self->{_SUB_SYNTAX} = 'simple-ini', return 'ini';
 
-    # If we can read key/value pairs separated by ':', it is an
-    # http syntax
-    /^\s*[\w-]+\s*:\s*.*\s*$/   and $syntax = 'http', last;
+    # If we can read key/value pairs separated by ':', it is an http syntax
+    /^\s*[\w-]+\s*:\s*.*\s*$/   and return 'http';
 
-    # If we can read key/value pairs separated by just whites,
-    # it is a simple syntax.
-    /^\s*[\w-]+\s+.*$/          and $syntax = 'simple', last;    
-  }
-
-  if ( $syntax ) {
-    return $syntax;
+    # If we can read key/value pairs separated by just whites, it is a simple syntax.
+    /^\s*[\w-]+\s+.*$/          and return 'simple';
   }
 
   $self->error("Couldn't identify the syntax used");
-  return undef;
+  return;
 
 }
 
@@ -235,12 +209,12 @@ sub parse_ini_file {
   my ($fh, $close_fh) = $class->_get_fh($file, O_RDONLY) or return;
   unless(flock($fh, LOCK_SH) ) {
     $errstr = "couldn't acquire shared lock on $fh: $!";
-    return undef;
+    return;
   }
   
   unless ( seek($fh, 0, 0) ) {
     $errstr = "couldn't seek to the beginning of the file: $!";
-    return undef;
+    return;
   }
 
   my $bn = $DEFAULTNS;
@@ -250,7 +224,7 @@ sub parse_ini_file {
     # skipping comments and empty lines:
 
     $line =~ /^\s*(\n|\#|;)/  and next;
-    $line =~ /\S/          or  next;
+    $line =~ /\S/             or  next;
 
     chomp $line;
     
@@ -263,23 +237,21 @@ sub parse_ini_file {
     $line =~ /^\s*([^=]*\w)\s*=\s*(.*)\s*$/  and $data{$bn}->{lcase($1)}=[parse_line(READ_DELIM, 0, $2)], next;
     # if we came this far, the syntax couldn't be validated:
     $errstr = "syntax error on line $. '$line'";
-    return undef;    
+    return;    
   }
   unless(flock($fh, LOCK_UN) ) {
     $errstr = "couldn't unlock file: $!";
-    return undef;
+    return;
   }
-  if ( $close_fh ) {
-    CORE::close($fh);
-  }
+ 
+  CORE::close($fh) if $close_fh;
   return \%data;
 }
 
 
 sub lcase {
   my $str = shift;
-  $LC or return $str;
-  return lc($str);
+  return ($LC ? lc($str) : $str);
 }
 
 sub parse_cfg_file {
@@ -289,7 +261,7 @@ sub parse_cfg_file {
     
   unless ( flock($fh, LOCK_SH) ) {
     $errstr = "couldn't get shared lock on $fh: $!";
-    return undef;
+    return;
   }
 
   unless ( seek($fh, 0, 0) ) {
@@ -309,16 +281,14 @@ sub parse_cfg_file {
     $line =~ /^\s*([\w-]+)\s+(.*)\s*$/ and $data{lcase($1)}=[parse_line(READ_DELIM, 0, $2)], next;
     # if we came this far, the syntax couldn't be validated:
     $errstr = "syntax error on line $.: '$line'";
-    return undef;
+    return;
   }
   unless ( flock($fh, LOCK_UN) ) {
     $errstr = "couldn't unlock the file: $!";
-    return undef;
+    return;
   }
-  
-  if ( $close_fh ) {
-    CORE::close($fh);
-  }
+ 
+  CORE::close($fh) if $close_fh;
   return \%data;
 }
 
@@ -328,12 +298,12 @@ sub parse_http_file {
   my ($fh, $close_fh) = $class->_get_fh($file, O_RDONLY) or return;    
   unless ( flock($fh, LOCK_SH) ) {
     $errstr = "couldn't get shared lock on file: $!";
-    return undef;
+    return;
   }
 
   unless( seek($fh, 0, 0) ) {
     $errstr = "couldn't seek to the start of the file: $!";
-    return undef;
+    return;
   }
   my %data = ();
   my $line;
@@ -349,15 +319,14 @@ sub parse_http_file {
     $line =~ /^\s*([\w-]+)\s*:\s*(.*)$/  and $data{lcase($1)}=[parse_line(READ_DELIM, 0, $2)], next;
     # if we came this far, the syntax couldn't be validated:
     $errstr = "syntax error on line $.: '$line'";
-    return undef;
+    return;
   }
   unless ( flock($fh, LOCK_UN) ) {
     $errstr = "couldn't unlock file: $!";
-    return undef;
+    return;
   }
-  if ( $close_fh ) {
-    CORE::close($fh);
-  }
+  
+  CORE::close($fh) if $close_fh;
   return \%data;
 }
 
@@ -393,7 +362,6 @@ sub param {
   if ( defined($args->{'-name'}) ) {
     # OBJ->param(-name=>'...') syntax:
     return $self->get_param($args->{'-name'});
-     
   }
   if ( defined($args->{'-block'}) && (defined($args->{'-values'}) || defined($args->{'-value'})) ) {
     return $self->set_block($args->{'-block'}, $args->{'-values'}||$args->{'-value'});
@@ -415,9 +383,7 @@ sub param {
 sub get_param {
   my ($self, $arg) = @_;
 
-  unless ( $arg ) {
-    croak "Usage: OBJ->get_param(\$key)";
-  }
+  croak "Usage: OBJ->get_param(\$key)" unless $arg;
   $arg = lcase($arg);
   my $syntax = $self->{_SYNTAX} or die "'_SYNTAX' is undefined";
   # If it was an ini-style, we should first
@@ -468,7 +434,7 @@ sub set_block {
   }
   my $processed_values = {};
   while ( my ($k, $v) = each %$values ) {
-    $v =~ s/\n/\\n/g;
+    $v and $v =~ s/\n/\\n/g;
     $processed_values->{$k} = (ref($v) eq 'ARRAY') ? $v : [$v];
     $self->_is_modified(1);
   }
@@ -482,15 +448,11 @@ sub set_param {
   my ($self, $key, $value) = @_;
 
   my $syntax = $self->{_SYNTAX} or die "'_SYNTAX' is not defined";  
-  if ( ref($value) eq 'ARRAY' ) {
-    for (my $i=0; $i < @$value; $i++ ) {
-      $value->[$i] =~ s/\n/\\n/g;
-    }
-  } else {
-    $value =~ s/\n/\\n/g;
-  }
-  unless ( ref($value) eq 'ARRAY' ) {
+  if (!$value or ref($value) ne 'ARRAY') {
     $value = [$value];
+  }
+  for (my $i=0; $i < @$value; $i++ ) {
+    $value->[$i] and $value->[$i] =~ s/\n/\\n/g;
   }
   $key = lcase($key);
   # If it was an ini syntax, we should first split the $key
@@ -518,20 +480,20 @@ sub write {
 
   unless ( sysopen(FH, $file, O_WRONLY|O_CREAT, 0666) ) {
     $self->error("'$file' couldn't be opened for writing: $!");
-    return undef;
+    return;
   }
   unless ( flock(FH, LOCK_EX) ) {
     $self->error("'$file' couldn't be locked: $!");
-    return undef;
+    return;
   }
   unless ( truncate(FH, 0) ) {
-      $self->error("'$file' couldn't be truncated: $!");
-      return undef;
+    $self->error("'$file' couldn't be truncated: $!");
+    return;
   }
   print FH $self->as_string();
   unless ( CORE::close(FH) ) {
     $self->error("Couldn't write into '$file': $!");
-    return undef;
+    return;
   }
   return 1;
 }
@@ -548,33 +510,25 @@ sub as_string {
     my $syntax = $self->{_SYNTAX} or die "'_SYNTAX' is not defined";
     my $sub_syntax = $self->{_SUB_SYNTAX} || '';
     my $currtime = localtime;
-    my $STRING = undef;
+    my $commentchar  = $syntax eq 'ini' ? ';'  : '#';
+    my $kv_separator = $syntax eq 'ini' ? '='  :
+                       $syntax eq 'http'? ': ' : ' ';   # used in printf statements below
+    my $STRING  = "$commentchar Config::Simple $VERSION\n";
+       $STRING .= "$commentchar $currtime\n\n";
     if ( $syntax eq 'ini' ) {
-        $STRING .= "; Config::Simple $VERSION\n";
-        $STRING .= "; $currtime\n\n";
         while ( my ($block_name, $key_values) = each %{$self->{_DATA}} ) {
-            unless ( $sub_syntax eq 'simple-ini' ) {
-                $STRING .= sprintf("[%s]\n", $block_name);
-            }
+            $STRING .= sprintf("[%s]\n", $block_name) unless $sub_syntax eq 'simple-ini';
             while ( my ($key, $value) = each %{$key_values} ) {
-                my $values = join (WRITE_DELIM, map { quote_values($_) } @$value);
-                $STRING .= sprintf("%s=%s\n", $key, $values );
+                $value = [''] if not defined $value;
+                $STRING .= sprintf("%s$kv_separator%s\n", $key, join (WRITE_DELIM, map { quote_values($_) } @$value));
             }
             $STRING .= "\n";
         }
-    } elsif ( $syntax eq 'http' ) {
-        $STRING .= "# Config::Simple $VERSION\n";
-        $STRING .= "# $currtime\n\n";
+    } else {
         while ( my ($key, $value) = each %{$self->{_DATA}} ) {
+            $value = [''] if not defined $value;
             my $values = join (WRITE_DELIM, map { quote_values($_) } @$value);
-            $STRING .= sprintf("%s: %s\n", $key, $values);
-        }
-    } elsif ( $syntax eq 'simple' ) {
-        $STRING .= "# Config::Simple $VERSION\n";
-        $STRING .= "# $currtime\n\n";
-        while ( my ($key, $value) = each %{$self->{_DATA}} ) {
-            my $values = join (WRITE_DELIM, map { quote_values($_) } @$value);
-            $STRING .= sprintf("%s %s\n", $key, $values);
+            $STRING .= sprintf("%s$kv_separator%s\n", $key, $values);
         }
     }
     $STRING .= "\n";
@@ -584,16 +538,14 @@ sub as_string {
 # quotes each value before saving into file
 sub quote_values {
     my $string = shift;
+    $string = $_[0] if ref($string);
+    $string and $string =~ s/\\/\\\\/g;
 
-    if ( ref($string) ) {   $string = $_[0] }
-    $string =~ s/\\/\\\\/g;
+    return $string unless ($USEQQ and $string and ($string =~ m/\W/));
 
-    if ( $USEQQ && ($string =~ m/\W/) ) {
-        $string =~ s/"/\\"/g;
-        $string =~ s/\n/\\n/g;
-        return sprintf("\"%s\"", $string);
-    }
-    return $string;
+    $string =~ s/"/\\"/g;
+    $string =~ s/\n/\\n/g;
+    return sprintf("\"%s\"", $string);
 }
 
 # deletes a variable
@@ -619,8 +571,148 @@ sub clear {
   map { $self->delete($_) } $self->param;
 }
 
+
+# returns all the keys as a hash or hashref
+sub vars {
+  my $self = shift;
+
+  # it might seem we should have used get_param() or param()
+  # methods to make the task easier, but param() itself uses 
+  # vars(), so it will result in a deep recursion
+  my %vars = ();
+  my $syntax = $self->{_SYNTAX} or die "'_SYNTAX' is not defined";
+  if ( $syntax eq 'ini' ) {
+    while ( my ($block, $values) = each %{$self->{_DATA}} ) {
+      while ( my ($k, $v) = each %{$values} ) {
+        $vars{"$block.$k"} = (@{$v} > 1) ? $v : $v->[0];
+      }
+    }
+  } else {
+    while ( my ($k, $v) = each %{$self->{_DATA}} ) {
+      $vars{$k} = (@{$v} > 1) ? $v : $v->[0];
+    }
+  }
+  return wantarray ? %vars : \%vars;
+}
+
+# imports names into the caller's namespace as global variables.
+# I'm not sure how secure this method is. Hopefully someone will
+# take a look at it for me
+sub import_names {
+  my ($self, $namespace) = @_;
+
+  unless ( defined $namespace ) {    
+    $namespace = (caller)[0];
+  }
+  if ( $namespace eq 'Config::Simple') {
+    croak "You cannot import into 'Config::Simple' package";
+  }
+  my %vars = $self->vars();
+  no strict 'refs';
+  while ( my ($k, $v) = each %vars ) {
+    $k =~ s/\W/_/g;
+    ${$namespace . '::' . uc($k)} = $v;
+  }
+}
+
+# imports names from a file. Compare with import_names.
+sub import_from {
+  my ($class, $file, $arg) = @_;
+
+  if ( ref($class) ) {
+    croak "import_from() is not an object method.";
+  }
+  # this is a hash support
+  if ( defined($arg) && (ref($arg) eq 'HASH') ) {
+    my $cfg = $class->new($file) or return;
+    map { $arg->{$_} = $cfg->param($_) } $cfg->param();
+    return $cfg;
+  }
+  # following is the original version of our import_from():
+  unless ( defined $arg ) {
+    $arg = (caller)[0];
+  }  
+  my $cfg = $class->new($file) or return;
+  $cfg->import_names($arg);
+  return $cfg;
+}
+
+sub error {
+  my ($self, $msg) = @_;
+  $errstr = $msg if $msg;
+  return $errstr;
+}
+
+sub dump {
+  my ($self, $file, $indent) = @_;
+
+  require Data::Dumper;
+  my $d = new Data::Dumper([$self], [ref $self]);
+  $d->Indent($indent||2);
+  if ( defined $file ) {
+    sysopen(FH, $file, O_WRONLY|O_CREAT|O_TRUNC, 0666) or die $!;
+    print FH $d->Dump();
+    CORE::close(FH) or die $!;
+  }
+  return $d->Dump();
+}
+
+sub verbose {
+  DEBUG or return;
+  carp "****[$0]: " .  join ("", @_);
+}
+
+
+#------------------
+# tie() interface
+#------------------
+
+sub TIEHASH {
+  my ($class, $file, $args) = @_;
+  unless ( defined $file ) {
+    croak "Usage: tie \%config, 'Config::Simple', \$filename";
+  }  
+  return $class->new($file);
+}
+
+sub FETCH  { shift->param(@_); }
+sub STORE  { shift->param(@_); }
+sub DELETE { shift->delete(@_);}
+sub CLEAR  {
+  my $self = shift;
+  map { $self->delete($_) } $self->param();
+}
+sub EXISTS   { exists shift->vars()->{shift}; }
+sub FIRSTKEY {
+  my $self = shift;
+
+  # we make sure that tied hash is created ONLY if the program
+  # needs to use this functionality.
+  unless ( defined $self->{_TIED_HASH} ) {    
+    $self->{_TIED_HASH} = $self->vars();
+  }
+  my $temp = keys %{ $self->{_TIED_HASH} };
+  return scalar each %{ $self->{_TIED_HASH} };
+}
+sub NEXTKEY {
+  my $self = shift;
+
+  unless ( defined $self->{_TIED_HASH} ) {
+    $self->{_TIED_HASH} = $self->vars();
+  }
+  return scalar each %{ $self->{_TIED_HASH} };
+}
+
+# -------------------
+# deprecated methods
+# -------------------
+
+sub write_string { shift->as_string(@_) }
+sub hashref      { scalar shift->vars   }
+sub param_hash   { (shift->vars)        }
+sub errstr       { shift->error(@_)     }
+sub block        { shift->get_block(@_) }
 1;
-__END__
 
 =pod
 
@@ -1244,227 +1336,6 @@ L<Config::General>, L<Config::Simple>, L<Config::Tiny>
 
 =cut
 
+
 # Following methods are loaded on demand.
-
-
-
-# returns all the keys as a hash or hashref
-sub vars {
-  my $self = shift;
-
-  # it might seem we should have used get_param() or param()
-  # methods to make the task easier, but param() itself uses 
-  # vars(), so it will result in a deep recursion
-  my %vars = ();
-  my $syntax = $self->{_SYNTAX} or die "'_SYNTAX' is not defined";
-  if ( $syntax eq 'ini' ) {
-    while ( my ($block, $values) = each %{$self->{_DATA}} ) {
-      while ( my ($k, $v) = each %{$values} ) {
-        $vars{"$block.$k"} = (@{$v} > 1) ? $v : $v->[0];
-      }
-    }
-  } else {
-    while ( my ($k, $v) = each %{$self->{_DATA}} ) {
-      $vars{$k} = (@{$v} > 1) ? $v : $v->[0];
-    }
-  }
-  return wantarray ? %vars : \%vars;
-}
-
-
-
-
-
-# imports names into the caller's namespace as global variables.
-# I'm not sure how secure this method is. Hopefully someone will
-# take a look at it for me
-sub import_names {
-  my ($self, $namespace) = @_;
-
-  unless ( defined $namespace ) {    
-    $namespace = (caller)[0];
-  }
-  if ( $namespace eq 'Config::Simple') {
-    croak "You cannot import into 'Config::Simple' package";
-  }
-  my %vars = $self->vars();
-  no strict 'refs';
-  while ( my ($k, $v) = each %vars ) {
-    $k =~ s/\W/_/g;
-    ${$namespace . '::' . uc($k)} = $v;
-  }
-}
-
-
-
-# imports names from a file. Compare with import_names.
-sub import_from {
-  my ($class, $file, $arg) = @_;
-
-  if ( ref($class) ) {
-    croak "import_from() is not an object method.";
-  }
-  # this is a hash support
-  if ( defined($arg) && (ref($arg) eq 'HASH') ) {
-    my $cfg = $class->new($file) or return;
-    map { $arg->{$_} = $cfg->param($_) } $cfg->param();
-    return $cfg;
-  }
-  # following is the original version of our import_from():
-  unless ( defined $arg ) {
-    $arg = (caller)[0];
-  }  
-  my $cfg = $class->new($file) or return;
-  $cfg->import_names($arg);
-  return $cfg;
-}
-
-
-
-
-sub error {
-  my ($self, $msg) = @_;
-
-  if ( $msg ) {
-    $errstr = $msg;
-  }
-  return $errstr;
-}
-
-
-
-
-
-sub dump {
-  my ($self, $file, $indent) = @_;
-
-  require Data::Dumper;
-  my $d = new Data::Dumper([$self], [ref $self]);
-  $d->Indent($indent||2);
-  if ( defined $file ) {
-    sysopen(FH, $file, O_WRONLY|O_CREAT|O_TRUNC, 0666) or die $!;
-    print FH $d->Dump();
-    CORE::close(FH) or die $!;
-  }
-  return $d->Dump();
-}
-
-
-sub verbose {
-  DEBUG or return;
-  carp "****[$0]: " .  join ("", @_);
-}
-
-
-
-
-#------------------
-# tie() interface
-#------------------
-
-sub TIEHASH {
-  my ($class, $file, $args) = @_;
-
-  unless ( defined $file ) {
-    croak "Usage: tie \%config, 'Config::Simple', \$filename";
-  }  
-  return $class->new($file);
-}
-
-
-sub FETCH {
-  my $self = shift;
-
-  return $self->param(@_);
-}
-
-
-sub STORE {
-  my $self = shift;
-
-  return $self->param(@_);
-}
-
-
-
-sub DELETE {
-  my $self = shift;
-
-  return $self->delete(@_);
-}
-
-
-sub CLEAR {
-  my $self = shift;
-  map { $self->delete($_) } $self->param();
-}
-
-
-sub EXISTS {
-  my ($self, $key) = @_;
-
-  my $vars = $self->vars();
-  return exists $vars->{$key};
-}
-
-
-
-sub FIRSTKEY {
-  my $self = shift;
-
-  # we make sure that tied hash is created ONLY if the program
-  # needs to use this functionality.
-  unless ( defined $self->{_TIED_HASH} ) {    
-    $self->{_TIED_HASH} = $self->vars();
-  }
-  my $temp = keys %{ $self->{_TIED_HASH} };
-  return scalar each %{ $self->{_TIED_HASH} };
-}
-
-
-sub NEXTKEY {
-  my $self = shift;
-
-  unless ( defined $self->{_TIED_HASH} ) {
-    $self->{_TIED_HASH} = $self->vars();
-  }
-  return scalar each %{ $self->{_TIED_HASH} };
-}
-
-
-
-
-
-# -------------------
-# deprecated methods
-# -------------------
-
-sub write_string {
-  my $self = shift;
-
-  return $self->as_string(@_);
-}
-
-sub hashref {
-  my $self = shift;
-
-  return scalar( $self->vars() );
-}
-
-sub param_hash {
-  my $self = shift;
-
-  return ($self->vars);
-}
-
-sub errstr {
-  my $self = shift;
-  return $self->error(@_);
-}
-
-
-sub block {
-  my $self = shift;
-  return $self->get_block(@_);
-}
 
