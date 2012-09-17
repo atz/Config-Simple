@@ -30,12 +30,13 @@ ok(-e $file, "file was written");
 
 #
 # There was a bug report, according to which if value of a key evaluates
-# to false, (such as "" or 0), Config::Simple wouldn't store them in a file
+# to false, (such as "" or 0), Config::Simple wouldn't store them in a file.
+#
+# Zero seems OK, but empty string/undef is giving errors.
 #
 
 ok($cfg = Config::Simple->new($file), "Config::Simple->new($file)");
 
-#for (qw/mysql.dsn mysql.user mysql.pass site.title/) {
 foreach (reverse sort keys %vals) {
     is(scalar $cfg->param($_), $vals{$_}, "config: $_"); #
 #   or print "FAILED PARAM: " . scalar(eval{$cfg->param($_)}) . "\n";
